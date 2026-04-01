@@ -1,0 +1,1078 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Interactive 3D LUT Generator (.cube)</title>
+  <style>
+    body {
+      background: linear-gradient(135deg, #1a0033, #2d1b69);
+      color: white;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      margin: 0;
+      padding: 20px;
+      min-height: 100vh;
+      display: flex;
+      gap: 20px;
+      box-sizing: border-box;
+    }
+    .main-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .video-container {
+      background: #000;
+      border-radius: 16px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 15px;
+      width: 900px;
+      min-height: 720px;
+      box-sizing: border-box;
+    }
+    .effects-panel {
+      width: 380px;
+      background: rgba(0, 0, 0, 0.32);
+      border-radius: 16px;
+      padding: 16px;
+      border: 1px solid rgba(255,255,255,0.08);
+      max-height: calc(100vh - 40px);
+      overflow: auto;
+      box-sizing: border-box;
+    }
+    .effects-title {
+      font-size: 28px;
+      font-weight: 300;
+      margin-bottom: 12px;
+      text-align: center;
+    }
+    .group-title {
+      font-weight: 600;
+      margin-bottom: 10px;
+      color: #ccc;
+      font-size: 14px;
+    }
+    .btn {
+      background: #4169E1;
+      border: none;
+      color: white;
+      padding: 8px 10px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    .btn.ghost {
+      background: transparent;
+      border: 1px solid rgba(255,255,255,0.12);
+    }
+    .file-input {
+      background: #333;
+      border: 2px dashed #666;
+      border-radius: 12px;
+      padding: 12px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      width: 400px;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+    .file-input input {
+      display: none;
+    }
+    .canvas-stage {
+      width: 800px;
+      max-width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .canvas-card {
+      width: 100%;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 14px;
+      padding: 12px;
+      box-sizing: border-box;
+    }
+    .canvas-label {
+      font-size: 13px;
+      color: #d7defa;
+      margin-bottom: 8px;
+    }
+    .fixed-preview {
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      background: #000;
+      border-radius: 12px;
+      display: block;
+    }
+    .lut-preview {
+      width: 100%;
+      height: auto;
+      border-radius: 12px;
+      background: #111;
+      display: block;
+    }
+    .controls-row {
+      width: 100%;
+      max-width: 800px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+    .toggle-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 999px;
+      padding: 7px 12px;
+      font-size: 13px;
+      color: #ddd;
+    }
+    .muted-note {
+      font-size: 12px;
+      color: #bbb;
+      margin-top: 6px;
+    }
+    .stop {
+      margin: 8px 0;
+      padding: 10px;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 10px;
+      background: rgba(255,255,255,0.04);
+      color: #f3f3f3;
+    }
+    .stop input[type="range"] {
+      width: 140px;
+      accent-color: #4169E1;
+      vertical-align: middle;
+    }
+    button {
+      background: #4169E1;
+      border: none;
+      color: white;
+      padding: 8px 10px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 13px;
+      margin: 4px 4px 4px 0;
+    }
+    .stop button:hover,
+    button:hover {
+      filter: brightness(1.05);
+    }
+    input[type="text"],
+    input[type="number"],
+    input[type="file"] {
+      color: white;
+    }
+    label {
+      display: inline-block;
+      min-width: 60px;
+    }
+    #customColorPicker {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin: 10px 0;
+      padding: 12px;
+      border-radius: 12px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+    #colorSquare, #hueSlider {
+      border: 1px solid #555;
+      border-radius: 8px;
+      cursor: crosshair;
+      position: relative;
+    }
+    .color-picker-indicator {
+      position: absolute;
+      pointer-events: none;
+      z-index: 10;
+    }
+    .square-indicator {
+      width: 12px;
+      height: 12px;
+      border: 2px solid #fff;
+      border-radius: 50%;
+      box-shadow: 0 0 0 1px #000, 0 0 4px rgba(0,0,0,0.5);
+      transform: translate(-50%, 0%);
+    }
+    .hue-indicator {
+      width: 100%;
+      height: 4px;
+      border: 2px solid #fff;
+      border-radius: 2px;
+      box-shadow: 0 0 0 1px #000, 0 0 4px rgba(0,0,0,0.5);
+      transform: translateY(100%);
+    }
+    .color-controls {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      align-items: center;
+    }
+    #colorPreview {
+      width: 50px;
+      height: 50px;
+      border-radius: 8px;
+      border: 2px solid #555;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    }
+    #hexInput {
+      width: 80px;
+      text-align: center;
+      background: #333;
+      border: 1px solid #555;
+      color: #fff;
+      padding: 4px;
+      border-radius: 4px;
+      font-family: monospace;
+    }
+    .color-swatches {
+      display: grid;
+      grid-template-columns: repeat(8, 1fr);
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .color-swatch {
+      width: 24px;
+      height: 24px;
+      border-radius: 4px;
+      border: 1px solid #555;
+      cursor: pointer;
+      transition: transform 0.1s ease;
+    }
+    .color-swatch:hover {
+      transform: scale(1.08);
+      border-color: #aaa;
+    }
+    .color-preview {
+      width: 30px;
+      height: 20px;
+      border: 1px solid rgba(255,255,255,0.25);
+      display: inline-block;
+      cursor: pointer;
+      vertical-align: middle;
+      border-radius: 4px;
+    }
+    .section-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .hidden-processing-canvas {
+      display: none;
+    }
+    @media (max-width: 900px) {
+      body {
+        flex-direction: column;
+      }
+      .video-container,
+      .effects-panel {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+<div class="main-container">
+  <div class="video-container">
+    <label class="file-input">
+      <input type="file" id="imageInput" accept="image/*">
+      <div id="fileLabel">Click to select image file</div>
+    </label>
+
+    <div class="controls-row">
+      <label class="toggle-chip"><input type="checkbox" id="livePreview" checked> Live effect preview</label>
+      <label class="toggle-chip"><input type="checkbox" id="disableAfterExport" checked> Disable preview after export</label>
+      <button id="showOriginalBtn" type="button" class="btn ghost">Show Original</button>
+      <button id="exportBtn" class="btn">Export 3D LUT as .cube</button>
+    </div>
+
+    <div class="canvas-stage">
+      <div class="canvas-card">
+        <div class="canvas-label">Gradient Preview</div>
+        <canvas id="lutCanvas" class="lut-preview" width="512" height="64"></canvas>
+      </div>
+      <div class="canvas-card">
+        <div class="canvas-label">Original Preview</div>
+        <canvas id="original" class="fixed-preview" width="800" height="450"></canvas>
+      </div>
+      <div class="canvas-card">
+        <div class="canvas-label">Mapped Preview</div>
+        <canvas id="mapped" class="fixed-preview" width="800" height="450"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="effects-panel">
+  <div class="effects-title">Interactive 3D LUT Generator</div>
+
+  <div class="group-title">Gradient Stops</div>
+  <div id="stops"></div>
+  <div class="section-actions">
+    <button id="addStop" class="btn">+ Add Gradient Stop</button>
+  </div>
+
+  <div class="group-title" style="margin-top:18px;">Color Picker</div>
+  <div id="customColorPicker" style="display:none;">
+    <div style="position:relative;">
+      <canvas id="colorSquare" width="150" height="150"></canvas>
+      <div id="squareIndicator" class="color-picker-indicator square-indicator"></div>
+    </div>
+    <div style="position:relative;">
+      <canvas id="hueSlider" width="20" height="150"></canvas>
+      <div id="hueIndicator" class="color-picker-indicator hue-indicator"></div>
+    </div>
+    <div class="color-controls">
+      <div id="colorPreview"></div>
+      <input id="hexInput" maxlength="7" placeholder="#000000">
+    </div>
+  </div>
+  <div class="color-swatches" id="colorSwatches"></div>
+  <div class="muted-note">Preview canvases stay fixed at 16:9 while the image is fitted inside with black bars when needed.</div>
+</div>
+
+<script>
+let stops = [];
+
+// Image preview / perf state
+let livePreviewEnabled = true;
+let latestLutForImage = null;
+let pendingApplyRafId = null;
+let pendingApplyTimeoutId = null;
+let currentImage = null;
+let origImageData = null;
+let cachedMappedImageData = null;
+const PREVIEW_WIDTH = 800;
+const PREVIEW_HEIGHT = 450;
+
+// Color picker state
+let colorPicker = {
+  hue: 0,
+  sat: 1,
+  val: 1,
+  isDragging: false
+};
+
+// Predefined color swatches
+const colorSwatches = [
+  '#000000', '#FFFFFF', '#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#FF00FF', '#00FFFF',
+  '#800000', '#808080', '#800080', '#008000', '#000080', '#808000', '#FF8000', '#8000FF',
+  '#FF4444', '#44FF44', '#4444FF', '#FFFF44', '#FF44FF', '#44FFFF', '#FFC0C0', '#C0FFC0'
+];
+
+let currentStop = null;
+const stopsContainer = document.getElementById("stops");
+
+// Dragging state (declared early to avoid TDZ during init)
+let dragging = false;
+let dragIndex = -1;
+let hasMoved = false;
+
+function generateLUT(stops, size = 256) {
+  const sortedStops = [...stops].sort((a, b) => a.pos - b.pos);
+  const lut = new Array(size);
+  for (let i = 0; i < size; i++) {
+    const t = i / (size - 1);
+
+    let left = sortedStops[0];
+    let right = sortedStops[sortedStops.length - 1];
+    for (let j = 0; j < sortedStops.length - 1; j++) {
+      if (t >= sortedStops[j].pos && t <= sortedStops[j + 1].pos) {
+        left = sortedStops[j];
+        right = sortedStops[j + 1];
+        break;
+      }
+    }
+
+    const denom = (right.pos - left.pos);
+    const localT = denom === 0 ? 0 : (t - left.pos) / denom;
+    const r = left.r + (right.r - left.r) * localT;
+    const g = left.g + (right.g - left.g) * localT;
+    const b = left.b + (right.b - left.b) * localT;
+    const a = (left.a + (right.a - left.a) * localT) / 255;
+
+    lut[i] = {r, g, b, a};
+  }
+  return lut;
+}
+
+function hexToRgba(hex, alpha) {
+  const bigint = parseInt(hex.slice(1), 16);
+  const r = (bigint >> 16) & 255;
+  const g = (bigint >> 8) & 255;
+  const b = bigint & 255;
+  return {r, g, b, a: alpha};
+}
+
+function hexToHsv(hex) {
+  const r = parseInt(hex.substr(1, 2), 16) / 255;
+  const g = parseInt(hex.substr(3, 2), 16) / 255;
+  const b = parseInt(hex.substr(5, 2), 16) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  const d = max - min;
+  let h = 0;
+  if (d !== 0) {
+    if (max === r) h = ((g - b) / d) % 6;
+    else if (max === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+    h *= 60;
+    if (h < 0) h += 360;
+  }
+  const s = max === 0 ? 0 : d / max;
+  const v = max;
+  return [h, s, v];
+}
+
+function hsvToHex(h, s, v) {
+  const c = v * s;
+  const x = c * (1 - Math.abs((h / 60) % 2 - 1));
+  const m = v - c;
+  let r = 0, g = 0, b = 0;
+  if (0 <= h && h < 60) { r = c; g = x; b = 0; }
+  else if (60 <= h && h < 120) { r = x; g = c; b = 0; }
+  else if (120 <= h && h < 180) { r = 0; g = c; b = x; }
+  else if (180 <= h && h < 240) { r = 0; g = x; b = c; }
+  else if (240 <= h && h < 300) { r = x; g = 0; b = c; }
+  else if (300 <= h && h < 360) { r = c; g = 0; b = x; }
+  r = Math.round((r + m) * 255);
+  g = Math.round((g + m) * 255);
+  b = Math.round((b + m) * 255);
+  return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
+}
+
+function rgbToHsv(r, g, b) {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  const d = max - min;
+  let h = 0;
+  if (d !== 0) {
+    if (max === r) h = ((g - b) / d) % 6;
+    else if (max === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+    h *= 60;
+    if (h < 0) h += 360;
+  }
+  const s = max === 0 ? 0 : d / max;
+  const v = max;
+  return [h, s, v];
+}
+
+function hsvToRgb(h, s, v) {
+  const c = v * s;
+  const x = c * (1 - Math.abs((h / 60) % 2 - 1));
+  const m = v - c;
+  let r = 0, g = 0, b = 0;
+  if (0 <= h && h < 60) { r = c; g = x; b = 0; }
+  else if (60 <= h && h < 120) { r = x; g = c; b = 0; }
+  else if (120 <= h && h < 180) { r = 0; g = c; b = x; }
+  else if (180 <= h && h < 240) { r = 0; g = x; b = c; }
+  else if (240 <= h && h < 300) { r = x; g = 0; b = c; }
+  else if (300 <= h && h < 360) { r = c; g = 0; b = x; }
+  r = Math.round((r + m) * 255);
+  g = Math.round((g + m) * 255);
+  b = Math.round((b + m) * 255);
+  return [r, g, b];
+}
+
+function drawColorSquare() {
+  const colorSquare = document.getElementById('colorSquare');
+  const ctx = colorSquare.getContext('2d');
+  // Base hue color
+  ctx.fillStyle = `hsl(${colorPicker.hue}, 100%, 50%)`;
+  ctx.fillRect(0, 0, colorSquare.width, colorSquare.height);
+
+  // White gradient (saturation)
+  const whiteGrad = ctx.createLinearGradient(0, 0, colorSquare.width, 0);
+  whiteGrad.addColorStop(0, 'rgba(255, 255, 255, 1)');
+  whiteGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+  ctx.fillStyle = whiteGrad;
+  ctx.fillRect(0, 0, colorSquare.width, colorSquare.height);
+
+  // Black gradient (value/brightness)
+  const blackGrad = ctx.createLinearGradient(0, 0, 0, colorSquare.height);
+  blackGrad.addColorStop(0, 'rgba(0, 0, 0, 0)');
+  blackGrad.addColorStop(1, 'rgba(0, 0, 0, 1)');
+  ctx.fillStyle = blackGrad;
+  ctx.fillRect(0, 0, colorSquare.width, colorSquare.height);
+}
+
+function drawHueSlider() {
+  const hueSlider = document.getElementById('hueSlider');
+  const ctx = hueSlider.getContext('2d');
+  for (let y = 0; y < hueSlider.height; y++) {
+    ctx.fillStyle = `hsl(${ (y / hueSlider.height) * 360 }, 100%, 50%)`;
+    ctx.fillRect(0, y, hueSlider.width, 1);
+  }
+}
+
+function updateIndicators() {
+  const squareIndicator = document.getElementById('squareIndicator');
+  const hueIndicator = document.getElementById('hueIndicator');
+  const colorSquare = document.getElementById('colorSquare');
+  const hueSlider = document.getElementById('hueSlider');
+
+  squareIndicator.style.left = (colorPicker.sat * colorSquare.width) + 'px';
+  squareIndicator.style.top = ((1 - colorPicker.val) * colorSquare.height) + 'px';
+  hueIndicator.style.top = (colorPicker.hue / 360 * hueSlider.height) + 'px';
+}
+
+function updateColorPicker() {
+  const hex = hsvToHex(colorPicker.hue, colorPicker.sat, colorPicker.val);
+  document.getElementById('colorPreview').style.backgroundColor = hex;
+  document.getElementById('hexInput').value = hex;
+  if (currentStop) {
+    currentStop.color = hex;
+    updatePreview();
+  }
+}
+
+function updatePreview() {
+  const colorStops = getStops();
+  const lut = generateLUT(colorStops);
+  latestLutForImage = lut;
+  const canvas = document.getElementById("lutCanvas");
+  const ctx = canvas.getContext("2d");
+
+  // draw checkerboard background
+  for (let x = 0; x < 512; x += 8) {
+    for (let y = 0; y < 64; y += 8) {
+      ctx.fillStyle = ((x / 8 + y / 8) % 2 === 0) ? '#cccccc' : '#aaaaaa';
+      ctx.fillRect(x, y, 8, 8);
+    }
+  }
+
+  // draw LUT gradient with alpha
+  for (let x = 0; x < 512; x++) {
+    const lutIndex = Math.floor(x / 2);
+    const {r, g, b, a} = lut[lutIndex];
+    ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${a})`;
+    ctx.fillRect(x, 0, 1, 64);
+  }
+
+  // draw stop points
+  ctx.fillStyle = 'black';
+  stops.forEach(stop => {
+    const x = stop.pos * 511;
+    const y = 32;
+    ctx.beginPath();
+    ctx.arc(x, y, 5, 0, 2 * Math.PI);
+    ctx.fill();
+  });
+
+  const stopsByPosition = [...stops].sort((a, b) => a.pos - b.pos);
+  stopsByPosition.forEach(stop => {
+    if (stop.container && stop.container.parentNode === stopsContainer) {
+      stopsContainer.appendChild(stop.container);
+    }
+  });
+
+  // update stop color previews
+  stops.forEach((stop) => {
+    const container = stop.container;
+    const colorPreview = container ? container.querySelector('.color-preview') : null;
+    if (colorPreview) {
+      const ctx = colorPreview.getContext('2d');
+      // clear
+      ctx.clearRect(0, 0, 30, 20);
+      // checkerboard
+      for (let x = 0; x < 30; x += 5) {
+        for (let y = 0; y < 20; y += 5) {
+          ctx.fillStyle = ((x / 5 + y / 5) % 2 === 0) ? '#aaaaaa' : '#cccc';
+          ctx.fillRect(x, y, 5, 5);
+        }
+      }
+      const {r, g, b, a} = hexToRgba(stop.color, stop.alpha);
+      ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${a / 255})`;
+      ctx.fillRect(0, 0, 30, 20);
+    }
+  });
+
+  // also update image preview if any
+  scheduleApplyToImage(lut);
+  return lut;
+}
+
+function getStops() {
+   return stops.map(s => {
+     const {r, g, b, a} = hexToRgba(s.color, s.alpha);
+     return {pos: s.pos, r, g, b, a};
+   });
+}
+
+function addStop(pos = 0.5, color = "#ffffff", alpha = 255) {
+  const stop = {pos, color, alpha};
+  stops.push(stop);
+
+  const container = document.createElement("div");
+  container.className = "stop";
+  stop.container = container;
+
+  const colorPreview = document.createElement("canvas");
+  colorPreview.className = "color-preview";
+  colorPreview.width = 30;
+  colorPreview.height = 20;
+  const ctx = colorPreview.getContext('2d');
+  // draw checkerboard
+  for (let x = 0; x < 30; x += 5) {
+    for (let y = 0; y < 20; y += 5) {
+      ctx.fillStyle = ((x / 5 + y / 5) % 2 === 0) ? '#ffaaaa' : '#ffcccc';
+      ctx.fillRect(x, y, 5, 5);
+    }
+  }
+  // fill with color and alpha
+  const {r, g, b, a} = hexToRgba(color, alpha);
+  ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${a / 255})`;
+  ctx.fillRect(0, 0, 30, 20);
+  colorPreview.onclick = () => openColorPicker(stop);
+
+  const alphaInput = document.createElement("input");
+  alphaInput.type = "range";
+  alphaInput.min = 0; alphaInput.max = 255; alphaInput.value = alpha;
+  alphaInput.className = "alpha";
+  alphaInput.oninput = () => { stop.alpha = parseInt(alphaInput.value); updatePreview(); };
+
+  const removeBtn = document.createElement("button");
+  removeBtn.textContent = "Remove";
+  removeBtn.onclick = () => {
+    const index = stops.indexOf(stop);
+    stops.splice(index, 1);
+    container.remove();
+    updatePreview();
+  };
+
+  container.appendChild(document.createTextNode("Color: "));
+  container.appendChild(colorPreview);
+  container.appendChild(document.createTextNode(" Alpha: "));
+  container.appendChild(alphaInput);
+  container.appendChild(removeBtn);
+
+  stopsContainer.appendChild(container);
+  updatePreview();
+}
+
+// Export .cube
+document.getElementById("exportBtn").addEventListener("click", () => {
+  const size = 33;
+  const lut = updatePreview();
+  let cube = "";
+  cube += "TITLE \"Custom 3D LUT\"\n";
+  cube += "LUT_3D_SIZE " + size + "\n";
+  cube += "DOMAIN_MIN 0.0 0.0 0.0\n";
+  cube += "DOMAIN_MAX 1.0 1.0 1.0\n";
+
+  for (let b = 0; b < size; b++) {
+    for (let g = 0; g < size; g++) {
+      for (let r = 0; r < size; r++) {
+        const R = r / (size - 1);
+        const G = g / (size - 1);
+        const B = b / (size - 1);
+
+        const lum = Math.round(
+          (0.2126 * R + 0.7152 * G + 0.0722 * B) * 255
+        );
+        const {r: lr, g: lg, b: lb, a} = lut[lum];
+        const outR = (lr * a + R * 255 * (1 - a)) / 255;
+        const outG = (lg * a + G * 255 * (1 - a)) / 255;
+        const outB = (lb * a + B * 255 * (1 - a)) / 255;
+        cube += `${outR.toFixed(6)} ${outG.toFixed(6)} ${outB.toFixed(6)}\n`;
+      }
+    }
+  }
+
+  const blob = new Blob([cube], {type: "text/plain"});
+  const link = document.createElement("a");
+  link.download = "LUT_33.cube";
+  link.href = URL.createObjectURL(blob);
+  link.click();
+
+  const disableAfterExport = document.getElementById("disableAfterExport");
+  if (disableAfterExport && disableAfterExport.checked) {
+    const livePreview = document.getElementById("livePreview");
+    if (livePreview) livePreview.checked = false;
+    livePreviewEnabled = false;
+    cancelScheduledApply();
+    showOriginalInMapped();
+  }
+});
+
+// Image preview logic
+const input = document.getElementById("imageInput");
+const origCanvas = document.getElementById("original");
+const mapCanvas = document.getElementById("mapped");
+const fileLabel = document.getElementById("fileLabel");
+const origCtx = origCanvas.getContext("2d");
+const mapCtx = mapCanvas.getContext("2d");
+const livePreviewEl = document.getElementById("livePreview");
+const showOriginalBtn = document.getElementById("showOriginalBtn");
+const sourceOrigCanvas = document.createElement("canvas");
+const sourceMapCanvas = document.createElement("canvas");
+const sourceOrigCtx = sourceOrigCanvas.getContext("2d");
+const sourceMapCtx = sourceMapCanvas.getContext("2d");
+
+origCanvas.width = PREVIEW_WIDTH;
+origCanvas.height = PREVIEW_HEIGHT;
+mapCanvas.width = PREVIEW_WIDTH;
+mapCanvas.height = PREVIEW_HEIGHT;
+
+function drawContainedPreview(sourceCanvas, targetCanvas, targetCtx) {
+  const targetWidth = targetCanvas.width;
+  const targetHeight = targetCanvas.height;
+  targetCtx.fillStyle = "#000";
+  targetCtx.fillRect(0, 0, targetWidth, targetHeight);
+
+  if (!sourceCanvas || !sourceCanvas.width || !sourceCanvas.height) return;
+
+  const sourceAspect = sourceCanvas.width / sourceCanvas.height;
+  const targetAspect = targetWidth / targetHeight;
+  let drawWidth = targetWidth;
+  let drawHeight = targetHeight;
+
+  if (sourceAspect > targetAspect) {
+    drawHeight = drawWidth / sourceAspect;
+  } else {
+    drawWidth = drawHeight * sourceAspect;
+  }
+
+  const offsetX = (targetWidth - drawWidth) / 2;
+  const offsetY = (targetHeight - drawHeight) / 2;
+  targetCtx.drawImage(sourceCanvas, offsetX, offsetY, drawWidth, drawHeight);
+}
+
+function refreshPreviewCanvases() {
+  drawContainedPreview(sourceOrigCanvas, origCanvas, origCtx);
+  drawContainedPreview(sourceMapCanvas, mapCanvas, mapCtx);
+}
+
+if (livePreviewEl) {
+  livePreviewEnabled = livePreviewEl.checked;
+  livePreviewEl.addEventListener("change", () => {
+    livePreviewEnabled = livePreviewEl.checked;
+    cancelScheduledApply();
+    if (!livePreviewEnabled) {
+      showOriginalInMapped();
+    } else if (latestLutForImage) {
+      scheduleApplyToImage(latestLutForImage, {immediate: true});
+    }
+  });
+}
+
+if (showOriginalBtn) {
+  showOriginalBtn.addEventListener("click", () => {
+    if (livePreviewEl) livePreviewEl.checked = false;
+    livePreviewEnabled = false;
+    cancelScheduledApply();
+    showOriginalInMapped();
+  });
+}
+
+input.addEventListener("change", e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  if (fileLabel) fileLabel.textContent = file.name;
+  const img = new Image();
+  img.onload = () => {
+    sourceOrigCanvas.width = img.width;
+    sourceOrigCanvas.height = img.height;
+    sourceMapCanvas.width = img.width;
+    sourceMapCanvas.height = img.height;
+    sourceOrigCtx.clearRect(0, 0, img.width, img.height);
+    sourceOrigCtx.drawImage(img, 0, 0);
+    sourceMapCtx.clearRect(0, 0, img.width, img.height);
+    sourceMapCtx.drawImage(img, 0, 0);
+    currentImage = img;
+    origImageData = null;
+    cachedMappedImageData = null;
+    try {
+      origImageData = sourceOrigCtx.getImageData(0, 0, sourceOrigCanvas.width, sourceOrigCanvas.height);
+    } catch {
+      origImageData = null;
+    }
+    refreshPreviewCanvases();
+    updatePreview();
+  };
+  img.src = URL.createObjectURL(file);
+});
+
+function showOriginalInMapped() {
+  if (!currentImage) return;
+  sourceMapCanvas.width = sourceOrigCanvas.width;
+  sourceMapCanvas.height = sourceOrigCanvas.height;
+  sourceMapCtx.clearRect(0, 0, sourceMapCanvas.width, sourceMapCanvas.height);
+  sourceMapCtx.drawImage(sourceOrigCanvas, 0, 0);
+  drawContainedPreview(sourceMapCanvas, mapCanvas, mapCtx);
+}
+
+function cancelScheduledApply() {
+  if (pendingApplyTimeoutId !== null) {
+    clearTimeout(pendingApplyTimeoutId);
+    pendingApplyTimeoutId = null;
+  }
+  if (pendingApplyRafId !== null) {
+    cancelAnimationFrame(pendingApplyRafId);
+    pendingApplyRafId = null;
+  }
+}
+
+function scheduleApplyToImage(lut, {immediate = false} = {}) {
+  latestLutForImage = lut;
+  if (!currentImage) return;
+  if (!livePreviewEnabled) {
+    showOriginalInMapped();
+    return;
+  }
+
+  cancelScheduledApply();
+  const doApply = () => {
+    pendingApplyRafId = null;
+    if (!currentImage || !livePreviewEnabled || !latestLutForImage) return;
+    applyToImage(latestLutForImage);
+  };
+
+  if (immediate) {
+    pendingApplyRafId = requestAnimationFrame(doApply);
+    return;
+  }
+
+  // Debounce heavy image mapping while dragging for smoother UI.
+  const pixelCount = sourceOrigCanvas.width * sourceOrigCanvas.height;
+  const shouldDebounce = dragging || colorPicker.isDragging || pixelCount > (900 * 600);
+  if (shouldDebounce) {
+    pendingApplyTimeoutId = setTimeout(() => {
+      pendingApplyTimeoutId = null;
+      pendingApplyRafId = requestAnimationFrame(doApply);
+    }, 120);
+  } else {
+    pendingApplyRafId = requestAnimationFrame(doApply);
+  }
+}
+
+function applyToImage(lut) {
+  if (!currentImage) return;
+  const w = sourceOrigCanvas.width;
+  const h = sourceOrigCanvas.height;
+  const src = origImageData || sourceOrigCtx.getImageData(0, 0, w, h);
+  if (!cachedMappedImageData || cachedMappedImageData.width !== w || cachedMappedImageData.height !== h) {
+    cachedMappedImageData = sourceMapCtx.createImageData(w, h);
+  }
+  const dst = cachedMappedImageData;
+
+  for (let i = 0; i < src.data.length; i += 4) {
+    const lum = Math.round(
+      0.2126 * src.data[i] + 0.7152 * src.data[i + 1] + 0.0722 * src.data[i + 2]
+    );
+    const {r, g, b, a} = lut[lum];
+    dst.data[i]     = Math.round(r * a + src.data[i] * (1 - a));
+    dst.data[i + 1] = Math.round(g * a + src.data[i + 1] * (1 - a));
+    dst.data[i + 2] = Math.round(b * a + src.data[i + 2] * (1 - a));
+    dst.data[i + 3] = src.data[i + 3];
+  }
+  sourceMapCtx.putImageData(dst, 0, 0);
+  drawContainedPreview(sourceMapCanvas, mapCanvas, mapCtx);
+}
+
+// Hook up Add buttons
+document.getElementById("addStop").addEventListener("click", () => addStop());
+
+// Initialize with 2 stops
+addStop(0.0, "#ff0000", 255);
+addStop(1.0, "#00ff00", 255);
+
+// Dragging functionality
+const canvas = document.getElementById("lutCanvas");
+const lutCanvasMaxX = canvas.width - 1;
+const lutCanvasCenterY = canvas.height / 2;
+
+function getCanvasPointerPosition(event, targetCanvas) {
+  const rect = targetCanvas.getBoundingClientRect();
+  const scaleX = targetCanvas.width / rect.width;
+  const scaleY = targetCanvas.height / rect.height;
+  return {
+    x: (event.clientX - rect.left) * scaleX,
+    y: (event.clientY - rect.top) * scaleY
+  };
+}
+
+canvas.addEventListener('mousedown', e => {
+  const { x, y } = getCanvasPointerPosition(e, canvas);
+  const pos = x / lutCanvasMaxX;
+  // find closest stop
+  let minDist = Infinity;
+  let index = -1;
+  stops.forEach((stop, i) => {
+    const dist = Math.abs(stop.pos - pos);
+    if (dist < 0.05 && dist < minDist) {
+      minDist = dist;
+      index = i;
+    }
+  });
+  if (index !== -1) {
+    // Check if click is on the point (within radius)
+    const stop = stops[index];
+    const pointX = stop.pos * lutCanvasMaxX;
+    const pointY = lutCanvasCenterY;
+    const clickDist = Math.sqrt((x - pointX) ** 2 + (y - pointY) ** 2);
+    if (clickDist <= 5) {
+      dragIndex = index;
+      hasMoved = false;
+      return;
+    }
+  }
+});
+
+canvas.addEventListener('mousemove', e => {
+  if (dragIndex !== -1) {
+    if (!hasMoved) {
+      hasMoved = true;
+      dragging = true;
+    }
+    if (dragging) {
+      const { x } = getCanvasPointerPosition(e, canvas);
+      const pos = Math.max(0, Math.min(1, x / lutCanvasMaxX));
+      stops[dragIndex].pos = pos;
+      updatePreview();
+    }
+  }
+});
+
+canvas.addEventListener('mouseup', () => {
+  if (dragging) {
+    dragging = false;
+  } else if (dragIndex !== -1 && !hasMoved) {
+    // Click on point, open picker
+    openColorPicker(stops[dragIndex]);
+  }
+  dragIndex = -1;
+  hasMoved = false;
+});
+
+// Color picker functions
+function openColorPicker(stop) {
+  currentStop = stop;
+  const [h, s, v] = hexToHsv(stop.color);
+  colorPicker.hue = h;
+  colorPicker.sat = s;
+  colorPicker.val = v;
+  drawColorSquare();
+  drawHueSlider();
+  updateIndicators();
+  updateColorPicker();
+  document.getElementById('customColorPicker').style.display = 'flex';
+}
+
+function closeColorPicker() {
+  document.getElementById('customColorPicker').style.display = 'none';
+  currentStop = null;
+}
+
+// Initialize color picker
+function initColorPicker() {
+  const colorSquare = document.getElementById('colorSquare');
+  const hueSlider = document.getElementById('hueSlider');
+  const hexInput = document.getElementById('hexInput');
+  const colorSwatchesDiv = document.getElementById('colorSwatches');
+
+  // Create swatches
+  colorSwatches.forEach(color => {
+    const swatch = document.createElement('div');
+    swatch.className = 'color-swatch';
+    swatch.style.backgroundColor = color;
+    swatch.onclick = () => {
+      const [h, s, v] = hexToHsv(color);
+      colorPicker.hue = h;
+      colorPicker.sat = s;
+      colorPicker.val = v;
+      updateColorPicker();
+      updateIndicators();
+      drawColorSquare();
+    };
+    colorSwatchesDiv.appendChild(swatch);
+  });
+
+  // Color square events
+  colorSquare.addEventListener('mousedown', e => {
+    colorPicker.isDragging = true;
+    updateSatVal(e, colorSquare);
+  });
+
+  colorSquare.addEventListener('mousemove', e => {
+    if (colorPicker.isDragging) updateSatVal(e, colorSquare);
+  });
+
+  colorSquare.addEventListener('mouseup', () => {
+    colorPicker.isDragging = false;
+  });
+
+  // Hue slider events
+  hueSlider.addEventListener('mousedown', e => {
+    colorPicker.isDragging = true;
+    updateHue(e, hueSlider);
+  });
+
+  hueSlider.addEventListener('mousemove', e => {
+    if (colorPicker.isDragging) updateHue(e, hueSlider);
+  });
+
+  hueSlider.addEventListener('mouseup', () => {
+    colorPicker.isDragging = false;
+  });
+
+  // Hex input
+  hexInput.addEventListener('input', e => {
+    const hex = e.target.value;
+    if (/^#[0-9a-fA-F]{6}$/.test(hex)) {
+      const [h, s, v] = hexToHsv(hex);
+      colorPicker.hue = h;
+      colorPicker.sat = s;
+      colorPicker.val = v;
+      updateColorPicker();
+      updateIndicators();
+      drawColorSquare();
+    }
+  });
+
+  // Global mouse up to stop dragging
+  window.addEventListener('mouseup', () => {
+    colorPicker.isDragging = false;
+  });
+}
+
+function updateSatVal(e, canvas) {
+  const pos = getCanvasPointerPosition(e, canvas);
+  const x = Math.max(0, Math.min(1, pos.x / canvas.width));
+  const y = Math.max(0, Math.min(1, pos.y / canvas.height));
+  colorPicker.sat = x;
+  colorPicker.val = 1 - y;
+  updateColorPicker();
+  updateIndicators();
+}
+
+function updateHue(e, canvas) {
+  const pos = getCanvasPointerPosition(e, canvas);
+  const y = Math.max(0, Math.min(1, pos.y / canvas.height));
+  colorPicker.hue = y * 360;
+  drawColorSquare();
+  updateColorPicker();
+  updateIndicators();
+}
+
+// Initialize
+initColorPicker();
+refreshPreviewCanvases();
+</script>
+</body>
+</html>
