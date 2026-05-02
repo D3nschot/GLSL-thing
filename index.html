@@ -12,9 +12,11 @@
     padding: 20px;
     min-height: 100vh;
     display: flex;
+    flex-direction: column;
+    align-items: center;
     gap: 20px;
   }
-  .main-container { flex: 1; display: flex; flex-direction: column; gap: 20px; }
+  .main-container { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 20px; }
   .video-container {
     background: #000;
     border-radius: 16px;
@@ -74,13 +76,20 @@
   .progress-bar:hover .progress-handle { opacity: 1; }
   .time-display { font-size: 13px; color: #ddd; font-family: monospace; min-width: 110px; text-align: right; }
   .effects-panel {
-    width: 360px;
+    width: 900px;
+    max-width: 100%;
     background: rgba(0, 0, 0, 0.32);
     border-radius: 16px;
     padding: 16px;
     border: 1px solid rgba(255,255,255,0.08);
-    max-height: calc(100vh - 80px);
+    max-height: 45vh;
     overflow: auto;
+  }
+
+  /* Wide layouts: put effects panel to the side when viewport aspect ratio > 4:3 */
+  @media (min-aspect-ratio: 4/3) {
+    .main-container { flex-direction: row; align-items: flex-start; justify-content: center; }
+    .effects-panel { width: 360px; max-height: calc(100vh - 80px); }
   }
   .effects-title { font-size: 28px; font-weight: 300; margin-bottom: 12px; text-align: center; }
   .effect-item {
@@ -184,15 +193,72 @@
     flex: 0 0 16px;
   }
 
+  .slider-value {
+    cursor: pointer;
+    border-radius: 4px;
+    padding: 1px 3px;
+    transition: background 0.15s, color 0.15s;
+    user-select: none;
+  }
+  .slider-value:hover {
+    background: rgba(65,105,225,0.25);
+    color: #fff;
+  }
+  .slider-value:active {
+    background: rgba(65,105,225,0.45);
+  }
+
+  /* Popup overlay for value entry */
+  #sliderValuePopup {
+    display: none;
+    position: fixed;
+    z-index: 9999;
+    background: #1a1a2e;
+    border: 1px solid rgba(65,105,225,0.7);
+    border-radius: 10px;
+    padding: 12px 14px;
+    box-shadow: 0 6px 24px rgba(0,0,0,0.6);
+    min-width: 180px;
+    flex-direction: column;
+    gap: 8px;
+  }
+  #sliderValuePopup.visible {
+    display: flex;
+  }
+  #sliderValuePopup label {
+    font-size: 12px;
+    color: #aaa;
+  }
+  #sliderValueInput {
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(65,105,225,0.5);
+    border-radius: 6px;
+    color: white;
+    font-size: 14px;
+    padding: 5px 8px;
+    width: 100%;
+    box-sizing: border-box;
+    outline: none;
+  }
+  #sliderValueInput:focus {
+    border-color: #4169E1;
+    background: rgba(65,105,225,0.15);
+  }
+  #sliderValuePopupBtns {
+    display: flex;
+    gap: 6px;
+    justify-content: flex-end;
+  }
+
 </style>
 </head>
 <body>
 
 <div class="main-container">
   <div class="video-container">
-    <div class="file-input" onclick="document.getElementById('videoFile').click()">
+    <div class="file-input" id="dropZone" onclick="document.getElementById('videoFile').click()">
       <input type="file" id="videoFile" accept="video/*">
-      <div id="fileLabel">Click to select video file</div>
+      <div id="fileLabel">Click or drag & drop a video file</div>
     </div>
 
     <canvas id="canvas" width="800" height="450"></canvas>
@@ -243,9 +309,8 @@
       </div>
     </div>
   </div>
-</div>
 
-<div class="effects-panel">
+  <div class="effects-panel">
   <div class="effects-title">Effects - click & drag to reorder (processing order = top → bottom)</div>
 
   <div>
@@ -274,6 +339,7 @@
     </div>
   </div>
 
+</div>
 </div>
 
 <script src="./sources/HME.js"></script>
@@ -369,7 +435,9 @@ const defaultEffects = [
       xPhase2:0.0, xPhase2Min:-6.28318, xPhase2Max:6.28318, xPhase2Step:0.01,
       yPhase2:0.0, yPhase2Min:-6.28318, yPhase2Max:6.28318, yPhase2Step:0.01,
       xType:'sine',
-      yType:'sine'
+      yType:'sine',
+      xPinMode: 0,
+      yPinMode: 0
     }
   },
 
@@ -380,7 +448,39 @@ const defaultEffects = [
       type:'pcm',
       amp:1, ampMin:-4, ampMax:4, ampStep:0.01,
       zoom:1.20, zoomMin:0.1, zoomMax:3.0, zoomStep:0.01,
-      motionBlur:0, motionBlurMin:0, motionBlurMax:1, motionBlurStep:0.01,
+      motionBlur:1, motionBlurMin:0, motionBlurMax:1, motionBlurStep:0.01,
+      iterations:2, iterationsMin:1, iterationsMax:10, iterationsStep:1
+    }
+  },
+
+  // Earthquake shake — natural Perlin-style noise for X, Y translation and rotation
+  { id:'earthquake', name:'Earthquake', enabled:false,
+    params:{
+      xAmp:0.1, xAmpMin:0.0, xAmpMax:0.2, xAmpStep:0.001,
+      yAmp:0.1, yAmpMin:0.0, yAmpMax:0.2, yAmpStep:0.001,
+      rotAmp:7.0, rotAmpMin:0.0, rotAmpMax:15.0, rotAmpStep:0.1,
+      zoom:1.2, zoomMin:0.1, zoomMax:3.0, zoomStep:0.01,
+      xSpeed:8.0, xSpeedMin:0.1, xSpeedMax:30.0, xSpeedStep:0.05,
+      ySpeed:8.0, ySpeedMin:0.1, ySpeedMax:30.0, ySpeedStep:0.05,
+      rotSpeed:5.0, rotSpeedMin:0.1, rotSpeedMax:30.0, rotSpeedStep:0.05,
+      octaves:8, octavesMin:1, octavesMax:8, octavesStep:1
+    }
+  },
+
+  // Active Cam — deterministic “random spacing + tension” camera shake + motion blur
+  { id:'activeCam', name:'Active Cam', enabled:false,
+    params:{
+      xAmp:0.0, xAmpMin:0.0, xAmpMax:0.2, xAmpStep:0.001,
+      yAmp:0.2, yAmpMin:0.0, yAmpMax:0.2, yAmpStep:0.001,
+      rotAmp:15.0, rotAmpMin:0.0, rotAmpMax:15.0, rotAmpStep:0.1,
+      zoom:1.2, zoomMin:0.1, zoomMax:3.0, zoomStep:0.01,
+      xSpeed:0.2, xSpeedMin:0.1, xSpeedMax:30.0, xSpeedStep:0.05,
+      ySpeed:0.2, ySpeedMin:0.1, ySpeedMax:30.0, ySpeedStep:0.05,
+      rotSpeed:0.2, rotSpeedMin:0.1, rotSpeedMax:30.0, rotSpeedStep:0.05,
+      tension:1.0, tensionMin:-4.0, tensionMax:4.0, tensionStep:0.01,
+      window:0.0, windowMin:0.0, windowMax:1.0, windowStep:0.01,
+      seed:51, seedMin:1, seedMax:1000, seedStep:1,
+      motionBlur:1.0, motionBlurMin:0.0, motionBlurMax:1.0, motionBlurStep:0.01,
       iterations:2, iterationsMin:1, iterationsMax:10, iterationsStep:1
     }
   }
@@ -389,6 +489,17 @@ const defaultEffects = [
 let effectsOrder = defaultEffects.map(e => e.id);
 let effectsMap = {}; // keyed by id to hold enabled + params
 defaultEffects.forEach(e => effectsMap[e.id] = JSON.parse(JSON.stringify(e)));
+
+// Back-compat: if older earthquake preset used single `speed`, fan it out.
+if (effectsMap.earthquake && effectsMap.earthquake.params) {
+  const p = effectsMap.earthquake.params;
+  if (p.speed !== undefined) {
+    if (p.xSpeed === undefined) p.xSpeed = p.speed;
+    if (p.ySpeed === undefined) p.ySpeed = p.speed;
+    if (p.rotSpeed === undefined) p.rotSpeed = p.speed;
+    delete p.speed;
+  }
+}
 
 // Active colors for strict color snapping: [red, yellow, green, cyan, blue, magenta, white]
 // White is on by default as a failsafe — if all 6 hue colors are disabled, white takes over.
@@ -916,9 +1027,9 @@ vec2 swirlUV(vec2 uv, vec2 center, float radius, float twists, int curveType, fl
   vec2 padj = vec2(p.x * wScale, p.y * hScale);
   float d = length(padj);
   float t = clamp(d / radius, 0.0, 1.0);
-  float curve = (curveType==0) ? (1.0 - t)
+  float curve = (curveType==0) ? (1.0 - t) * 0.5
               : (curveType==1) ? pow(1.0 - t, 2.0) * 0.5
-              : sin(t * 3.14159265);
+              : sin(pow(1.0 - t, 2.0) * 3.14159265) * 0.25;
   if(d > radius) return uv;
   float ang = atan(padj.y, padj.x) + twists * curve * 6.2831853;
   vec2 q = vec2(cos(ang), sin(ang)) * d;
@@ -1092,8 +1203,43 @@ if (u_enabled_waveWarp > 0.5) {
   float yPhase = (uv.x * u_waveWarpYFreq) + (waveTime * u_waveWarpYSpeed) + u_waveWarpYPhase;
   float xTime2 = (waveTime * u_waveWarpXSpeed2) + u_waveWarpXPhase;
   float yTime2 = (waveTime * u_waveWarpYSpeed2) + u_waveWarpYPhase;
-  warpedUV.x += waveShape(xPhase, xTime2, u_waveWarpXPhase2, u_waveWarpXType) * u_waveWarpXAmp;
-  warpedUV.y += waveShape(yPhase, yTime2, u_waveWarpYPhase2, u_waveWarpYType) * u_waveWarpYAmp;
+  float xWave = waveShape(xPhase, xTime2, u_waveWarpXPhase2, u_waveWarpXType);
+  float yWave = waveShape(yPhase, yTime2, u_waveWarpYPhase2, u_waveWarpYType);
+
+  // X axis — displaces horizontally, so pin along X edges (left/right)
+  if (u_waveWarpXPinMode == 3) {
+    // Diag: remap X coordinate using wave as sliding center
+    float c = clamp(-xWave * u_waveWarpXAmp + 0.5, 0.0, 1.0);
+    float p = uv.x;
+    float remapped = (p < c) ? (p / c) * 0.5 : 0.5 + ((p - c) / (1.0 - c)) * 0.5;
+    warpedUV.x = remapped;
+  } else {
+    float xEnv = 1.0;
+    if (u_waveWarpXPinMode == 1) {
+      xEnv = smoothstep(0.0, 0.06, uv.x) * smoothstep(0.0, 0.06, 1.0 - uv.x);
+    } else if (u_waveWarpXPinMode == 2) {
+      xEnv = sin(uv.x * 3.14159265);
+    }
+    warpedUV.x += xWave * u_waveWarpXAmp * xEnv;
+  }
+
+  // Y axis — displaces vertically, so pin along Y edges (top/bottom)
+  if (u_waveWarpYPinMode == 3) {
+    // Diag: remap Y coordinate using wave as sliding center
+    float c = clamp(-yWave * u_waveWarpYAmp + 0.5, 0.0, 1.0);
+    float p = uv.y;
+    float remapped = (p < c) ? (p / c) * 0.5 : 0.5 + ((p - c) / (1.0 - c)) * 0.5;
+    warpedUV.y = remapped;
+  } else {
+    float yEnv = 1.0;
+    if (u_waveWarpYPinMode == 1) {
+      yEnv = smoothstep(0.0, 0.06, uv.y) * smoothstep(0.0, 0.06, 1.0 - uv.y);
+    } else if (u_waveWarpYPinMode == 2) {
+      yEnv = sin(uv.y * 3.14159265);
+    }
+    warpedUV.y += yWave * u_waveWarpYAmp * yEnv;
+  }
+
   color = texture2D(u_tex, clamp(warpedUV, 0.0, 1.0));
 }`
   },
@@ -1143,6 +1289,112 @@ if (u_enabled_rotation > 0.5) {
       s = texture2D(u_tex, newUV).rgb;
     }
 
+    colorSum += s;
+    totalWeight += 1.0;
+  }
+
+  color.rgb = colorSum / max(totalWeight, 0.001);
+}`
+  },
+
+  earthquake: {
+    func: `
+// Smooth value noise (Perlin-style) for natural earthquake motion
+// Hash helper
+float eqHash(float n) { return fract(sin(n) * 43758.5453123); }
+
+// 1-D smooth noise: cubic Hermite interpolation between random values
+float eqNoise1D(float t) {
+  float i = floor(t);
+  float f = fract(t);
+  float u = f * f * (3.0 - 2.0 * f); // smoothstep
+  return mix(eqHash(i), eqHash(i + 1.0), u);
+}
+
+// Fractal Brownian Motion — layered octaves for organic feel
+float eqFBM(float t, int octaves) {
+  float val = 0.0;
+  float amp = 0.5;
+  float freq = 1.0;
+  for (int o = 0; o < 8; o++) {
+    if (o >= octaves) break;
+    val += amp * (eqNoise1D(t * freq) * 2.0 - 1.0);
+    amp  *= 0.5;
+    freq *= 2.0;
+  }
+  return val;
+}
+
+// Rotate a UV point around center (aspect-correct so rotation isn't ratio-dependent)
+vec2 eqRotate(vec2 p, vec2 center, float angle) {
+  vec2 d = p - center;
+  d.x *= u_aspect;
+  float s = sin(angle), c = cos(angle);
+  vec2 r = vec2(d.x * c - d.y * s, d.x * s + d.y * c);
+  r.x /= u_aspect;
+  return center + r;
+}
+`,
+    apply: `// earthquake — natural noise shake on X, Y translation + rotation (noise or typed like Rotation)
+if (u_enabled_earthquake > 0.5) {
+  float tx = u_time * u_earthquakeXSpeed;
+  float ty = u_time * u_earthquakeYSpeed;
+  float tr = u_time * u_earthquakeRotSpeed;
+  int oct = int(u_earthquakeOctaves);
+
+  // Three independent noise lanes with different phase offsets
+  float dx  = eqFBM(tx + 0.0,   oct) * u_earthquakeXAmp;
+  float dy  = eqFBM(ty + 31.41, oct) * u_earthquakeYAmp;
+
+  {
+    float rot = eqFBM(tr + 17.29, oct) * radians(u_earthquakeRotAmp);
+
+    vec2 center = vec2(0.5, 0.5);
+    float zoom = max(u_earthquakeZoom, 0.001);
+    vec2 uvZoomed = (uv - center) / zoom + center;
+    vec2 shiftedUV = uvZoomed + vec2(dx, dy);
+    vec2 rotatedUV = eqRotate(shiftedUV, vec2(0.5, 0.5), rot);
+
+    color = texture2D(u_tex, clamp(rotatedUV, 0.0, 1.0));
+  }
+}`
+  },
+  activeCam: {
+    func: `
+// Aspect-correct UV rotation around center (Active Cam)
+vec2 acRotate(vec2 p, vec2 center, float angle) {
+  vec2 d = p - center;
+  d.x *= u_aspect;
+  float s = sin(angle), c = cos(angle);
+  vec2 r = vec2(d.x * c - d.y * s, d.x * s + d.y * c);
+  r.x /= u_aspect;
+  return center + r;
+}
+`,
+    apply: `// activeCam — CPU-driven deterministic shake + Rotation-style motion blur accumulation
+if (u_enabled_activeCam > 0.5) {
+  float iters = max(1.0, u_activeCamIterations);
+  vec2 center = vec2(0.5, 0.5);
+  float zoom = max(u_activeCamZoom, 0.001);
+
+  vec3 colorSum = vec3(0.0);
+  float totalWeight = 0.0;
+
+  for (int i = 0; i < 10; i++) {
+    if (float(i) >= iters) break;
+
+    float dx = u_activeCamDX[i];
+    float dy = u_activeCamDY[i];
+    float rot = u_activeCamRot[i];
+
+    vec2 uvZoomed = (uv - center) / zoom + center;
+    vec2 shiftedUV = uvZoomed + vec2(dx, dy);
+    vec2 rotatedUV = acRotate(shiftedUV, center, rot);
+
+    vec3 s = vec3(0.0);
+    if (rotatedUV.x >= 0.0 && rotatedUV.x <= 1.0 && rotatedUV.y >= 0.0 && rotatedUV.y <= 1.0) {
+      s = texture2D(u_tex, rotatedUV).rgb;
+    }
     colorSum += s;
     totalWeight += 1.0;
   }
@@ -1291,12 +1543,30 @@ uniform float u_waveWarpXSpeed2; uniform float u_waveWarpYSpeed2;
 uniform float u_waveWarpXPhase; uniform float u_waveWarpYPhase;
 uniform float u_waveWarpXPhase2; uniform float u_waveWarpYPhase2;
 uniform int u_waveWarpXType; uniform int u_waveWarpYType;
+uniform int u_waveWarpXPinMode; uniform int u_waveWarpYPinMode;
 uniform float u_enabled_rotation;
 uniform float u_rotationAmp;
 uniform float u_rotationZoom;
 uniform float u_rotationMotionBlur;
 uniform float u_rotationIterations;
 uniform float u_rotationAngles[10];
+
+uniform float u_enabled_earthquake;
+uniform float u_earthquakeXAmp;
+uniform float u_earthquakeYAmp;
+uniform float u_earthquakeRotAmp;
+uniform float u_earthquakeZoom;
+uniform float u_earthquakeXSpeed;
+uniform float u_earthquakeYSpeed;
+ uniform float u_earthquakeRotSpeed;
+ uniform float u_earthquakeOctaves;
+
+uniform float u_enabled_activeCam;
+uniform float u_activeCamZoom;
+uniform float u_activeCamIterations;
+uniform float u_activeCamDX[10];
+uniform float u_activeCamDY[10];
+uniform float u_activeCamRot[10];
 `;
 
 function buildEffectFragmentShader(effectId) {
@@ -1465,6 +1735,158 @@ function computeRotationAngles() {
   return angles;
 }
 
+// Active Cam noise (deterministic random spacing + tension) — user-provided mulberry32 variant
+function mulberry32(seed) {
+  let s = seed >>> 0;
+  return function() {
+    s += 0x6D2B79F5;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t ^= t + Math.imul(t ^ (t >>> 7), 61 | t);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function segmentAt(n, seed) {
+  const rngY   = mulberry32((seed ^ 0xDEAD) + n * 0x9E3779B9);
+  const rngGap = mulberry32((seed ^ 0xBEEF) + n * 0x9E3779B9);
+  return { v: rngY(), gap: 0.05 + rngGap() * 0.20 };
+}
+
+function segmentStart(n, seed) {
+  let t = 0;
+  for (let i = 0; i < n; i++) t += segmentAt(i, seed).gap;
+  return t;
+}
+
+function makeNoise() {
+  let _seed     = -1;
+  let _n        = 0;
+  let _segStart = 0;
+  let _seg      = null;
+  let _next     = null;
+
+  function resetAt(n, seed) {
+    _seed     = seed;
+    _n        = n;
+    _segStart = segmentStart(n, seed);
+    _seg      = segmentAt(n,     seed);
+    _next     = segmentAt(n + 1, seed);
+  }
+
+  return function(phase, seed, tension, steepness) {
+    if (_seed !== seed || phase < _segStart) {
+      const avgGap = 0.125;
+      const estimate = Math.max(0, Math.floor(phase / avgGap) - 2);
+      resetAt(estimate, seed);
+    }
+
+    while (phase >= _segStart + _seg.gap) {
+      _segStart += _seg.gap;
+      _n++;
+      _seg  = _next;
+      _next = segmentAt(_n + 1, seed);
+    }
+
+    const t = (phase - _segStart) / _seg.gap;
+    const s = Math.min(steepness / _seg.gap, 0.45);
+
+    let tW;
+    if (t < s)        tW = 0;
+    else if (t > 1-s) tW = 1;
+    else              tW = (t - s) / (1 - s * 2);
+
+    const tSmooth = tW * tW * (3 - 2 * tW);
+    const tFinal  = (1 - tension) * tW + tension * tSmooth;
+
+    return _seg.v + tFinal * (_next.v - _seg.v);
+  };
+}
+
+const activeCamNoiseX = makeNoise();
+const activeCamNoiseY = makeNoise();
+const activeCamNoiseR = makeNoise();
+
+function computeActiveCamSamples() {
+  const outDx  = new Float32Array(10);
+  const outDy  = new Float32Array(10);
+  const outRot = new Float32Array(10);
+
+  const eff = effectsMap.activeCam;
+  if (!eff || !eff.params) return { dx: outDx, dy: outDy, rot: outRot };
+
+  const iters = Math.max(0, Math.round(eff.params.iterations || 0));
+  if (iters <= 0) return { dx: outDx, dy: outDy, rot: outRot };
+
+  const maxIter = Math.max(iters - 1, 1);
+  const blur = Math.max(0, Math.min(1, eff.params.motionBlur || 0));
+  const seed = (eff.params.seed | 0) || 1;
+  const tension = Math.max(-4, Math.min(4, eff.params.tension || 0));
+  const window = Math.max(0, Math.min(1, eff.params.window || 0));
+
+  const xAmp = eff.params.xAmp || 0;
+  const yAmp = eff.params.yAmp || 0;
+  const rotAmpDeg = eff.params.rotAmp || 0;
+
+  const xSpeed = eff.params.xSpeed || 1.0;
+  const ySpeed = eff.params.ySpeed || 1.0;
+  const rotSpeed = eff.params.rotSpeed || 1.0;
+
+  const now = (video.currentTime || 0);
+
+  for (let i = 0; i < iters && i < 10; i++) {
+    const k = iters <= 1 ? 0 : (i / maxIter);
+    const tS = Math.max(now - blur * (k / 3), 0);
+
+    const tx = tS * xSpeed;
+    const ty = tS * ySpeed;
+    const tr = tS * rotSpeed;
+
+    // Noise is in 0..1; remap to -1..1 then scale
+    const nx = activeCamNoiseX(tx, seed + 11, tension, window) * 2 - 1;
+    const ny = activeCamNoiseY(ty, seed + 23, tension, window) * 2 - 1;
+    const nr = activeCamNoiseR(tr, seed + 37, tension, window) * 2 - 1;
+
+    outDx[i] = nx * xAmp;
+    outDy[i] = ny * yAmp;
+    outRot[i] = (nr * rotAmpDeg) * (Math.PI / 180);
+  }
+
+  return { dx: outDx, dy: outDy, rot: outRot };
+}
+
+/* -----------------------------------------------------------------------
+   computeEarthquakeRotationAngles â€” typed rotation angles for earthquake
+   Uses the same staggered angle formula as Rotation, but driven by:
+     x = u_time * speed
+   Returns Float32Array of length 10 (padded with 0s).
+----------------------------------------------------------------------- */
+function computeEarthquakeRotationAngles() {
+  const angles = new Float32Array(10);
+  const eff = effectsMap.earthquake;
+  if (!eff) return angles;
+
+  const rotType = (eff.params && eff.params.rotType) ? String(eff.params.rotType) : 'noise';
+  const iters = Math.max(1, Math.round((eff.params && eff.params.rotIterations) || 1));
+  if (rotType === 'noise') return angles;
+
+  const speed = (eff.params && eff.params.speed) || 1.0;
+  const amp = (eff.params && eff.params.rotAmp) || 0;
+  const x = (video.currentTime || 0) * speed;
+  const maxIter = Math.max(iters - 1, 1);
+
+  const angleFn = rotType === 'pcm'
+    ? (typeof getAnglePCM === 'function' ? getAnglePCM : null)
+    : rotType === 'sin'
+      ? (typeof getAngleSin === 'function' ? getAngleSin : null)
+      : (typeof getAngle === 'function' ? getAngle : null);
+
+  for (let i = 0; i < iters && i < 10; i++) {
+    const t = Math.max(x - i / (maxIter) / 3, 0);
+    angles[i] = angleFn ? angleFn(t) * amp * (Math.PI / 180) : t;
+  }
+  return angles;
+}
+
 // Maps strict mode string to int: 0=off, 1=nearest(no white), 2=floor, 3=ceil, 4=nearest+white
 function strictModeValue(m) {
   if (m === 'nearest') return 1;
@@ -1565,6 +1987,8 @@ function setAllUniforms(prog, sharedSrc, srcTexUnit) {
     effectsMap.waveWarp.params.yType === 'square' ? 3 :
     effectsMap.waveWarp.params.yType === 'bytebeat' ? 4 :
     effectsMap.waveWarp.params.yType === 'naturalNoise' ? 5 : 0);
+  u1i('u_waveWarpXPinMode', effectsMap.waveWarp.params.xPinMode || 0);
+  u1i('u_waveWarpYPinMode', effectsMap.waveWarp.params.yPinMode || 0);
 
   // Rotation — pass per-iteration pre-computed angles and all params
   const iters = Math.max(0, Math.round(effectsMap.rotation.params.iterations));
@@ -1579,6 +2003,33 @@ function setAllUniforms(prog, sharedSrc, srcTexUnit) {
   const anglesLoc = gl.getUniformLocation(prog, 'u_rotationAngles[0]');
   if (anglesLoc !== null) {
     gl.uniform1fv(anglesLoc, computeRotationAngles());
+  }
+
+  // Earthquake
+  u1f('u_enabled_earthquake', effectsMap.earthquake.enabled ? 1 : 0);
+  u1f('u_earthquakeXAmp',     effectsMap.earthquake.params.xAmp   || 0);
+  u1f('u_earthquakeYAmp',     effectsMap.earthquake.params.yAmp   || 0);
+  u1f('u_earthquakeRotAmp',   effectsMap.earthquake.params.rotAmp || 0);
+  u1f('u_earthquakeZoom',     effectsMap.earthquake.params.zoom   || 1.0);
+  u1f('u_earthquakeXSpeed',   effectsMap.earthquake.params.xSpeed  || 1.0);
+  u1f('u_earthquakeYSpeed',   effectsMap.earthquake.params.ySpeed  || 1.0);
+  u1f('u_earthquakeRotSpeed', effectsMap.earthquake.params.rotSpeed|| 1.0);
+  u1f('u_earthquakeOctaves',  effectsMap.earthquake.params.octaves || 3);
+
+  // Active Cam — compute per-iteration offsets on CPU (uses mulberry32 segment noise)
+  const acIters = Math.max(0, Math.round(effectsMap.activeCam.params.iterations));
+  u1f('u_enabled_activeCam',  (effectsMap.activeCam.enabled && acIters > 0) ? 1 : 0);
+  u1f('u_activeCamZoom',      effectsMap.activeCam.params.zoom || 1.0);
+  u1f('u_activeCamIterations',acIters);
+
+  const acDxLoc  = gl.getUniformLocation(prog, 'u_activeCamDX[0]');
+  const acDyLoc  = gl.getUniformLocation(prog, 'u_activeCamDY[0]');
+  const acRotLoc = gl.getUniformLocation(prog, 'u_activeCamRot[0]');
+  if (acDxLoc !== null || acDyLoc !== null || acRotLoc !== null) {
+    const samples = computeActiveCamSamples();
+    if (acDxLoc  !== null) gl.uniform1fv(acDxLoc,  samples.dx);
+    if (acDyLoc  !== null) gl.uniform1fv(acDyLoc,  samples.dy);
+    if (acRotLoc !== null) gl.uniform1fv(acRotLoc, samples.rot);
   }
 
   // shared-source uniforms
@@ -1741,7 +2192,7 @@ function buildEffectsUI() {
     item.className = 'effect-item';
     item.draggable = true;
     item.dataset.effect = id;
-    if (['hue', 'swirl', 'rays', 'starGlint', 'cubeMap', 'waveWarp', 'rotation'].includes(id)) {
+    if (['hue', 'swirl', 'rays', 'starGlint', 'cubeMap', 'waveWarp', 'rotation', 'activeCam'].includes(id)) {
       item.classList.add('multiline');
     }
 
@@ -2078,14 +2529,28 @@ function buildEffectsUI() {
         return row;
       }
 
+      function wavePinRow(labelTxt, key) {
+        const row = document.createElement('div');
+        row.style.display = 'flex'; row.style.alignItems = 'center'; row.style.gap = '8px';
+        const label = document.createElement('label');
+        label.textContent = labelTxt; label.style.fontSize = '12px'; label.style.color = '#ccc'; label.style.minWidth = '70px';
+        const select = document.createElement('select');
+        select.innerHTML = `<option value="0">No Pin</option><option value="1">Edges</option><option value="2">Sin</option><option value="3">Diag</option>`;
+        select.value = String(eff.params[key] || 0);
+        select.addEventListener('change', e => { eff.params[key] = parseInt(e.target.value); });
+        row.appendChild(label); row.appendChild(select);
+        return row;
+      }
+
       waveContainer.appendChild(waveTypeRow('X Wave:', 'xType'));
-      waveContainer.appendChild(waveSlider('X Amp:', 'xAmp', -0.25, 0.25, 0.001));
-      waveContainer.appendChild(waveSlider('X Freq:', 'xFreq', 0, 30, 0.1));
+      waveContainer.appendChild(wavePinRow('X Pin Mode:', 'xPinMode'));
+      waveContainer.appendChild(waveSlider('X Amp:', 'xAmp', -0.25, 0.25, 0.001));      waveContainer.appendChild(waveSlider('X Freq:', 'xFreq', 0, 30, 0.1));
       waveContainer.appendChild(waveSlider('X Speed:', 'xSpeed', -10, 10, 0.01));
       waveContainer.appendChild(waveSlider('X Speed 2:', 'xSpeed2', -10, 10, 0.01));
       waveContainer.appendChild(waveSlider('X Phase:', 'xPhase', -6.28318, 6.28318, 0.01));
       waveContainer.appendChild(waveSlider('X Phase 2:', 'xPhase2', -6.28318, 6.28318, 0.01));
       waveContainer.appendChild(waveTypeRow('Y Wave:', 'yType'));
+      waveContainer.appendChild(wavePinRow('Y Pin Mode:', 'yPinMode'));
       waveContainer.appendChild(waveSlider('Y Amp:', 'yAmp', -0.25, 0.25, 0.001));
       waveContainer.appendChild(waveSlider('Y Freq:', 'yFreq', 0, 30, 0.1));
       waveContainer.appendChild(waveSlider('Y Speed:', 'ySpeed', -10, 10, 0.01));
@@ -2098,19 +2563,6 @@ function buildEffectsUI() {
       const rotContainer = document.createElement('div');
       rotContainer.style.display = 'flex'; rotContainer.style.flexDirection = 'column';
       rotContainer.style.gap = '6px'; rotContainer.style.minWidth = '300px';
-
-      function addRotationTypeRow() {
-        const row = document.createElement('div');
-        row.style.display = 'flex'; row.style.alignItems = 'center'; row.style.gap = '8px';
-        const label = document.createElement('label');
-        label.textContent = 'Type:'; label.style.fontSize = '12px'; label.style.color = '#ccc'; label.style.minWidth = '80px';
-        const select = document.createElement('select');
-        select.innerHTML = `<option value="pcm">getAnglePCM</option><option value="angle">getAngle</option><option value="sin">getAngleSin</option>`;
-        select.value = eff.params.type || 'angle';
-        select.addEventListener('change', e => { eff.params.type = e.target.value; });
-        row.appendChild(label); row.appendChild(select);
-        return row;
-      }
 
       // Live label display helper
       function addSliderWithLabel(labelTxt, key, min, max, step) {
@@ -2140,6 +2592,19 @@ function buildEffectsUI() {
         return row;
       }
 
+      function addRotationTypeRow() {
+        const row = document.createElement('div');
+        row.style.display = 'flex'; row.style.alignItems = 'center'; row.style.gap = '8px';
+        const label = document.createElement('label');
+        label.textContent = 'Type:'; label.style.fontSize = '12px'; label.style.color = '#ccc'; label.style.minWidth = '80px';
+        const select = document.createElement('select');
+        select.innerHTML = `<option value="pcm">getAnglePCM</option><option value="angle">getAngle</option><option value="sin">getAngleSin</option>`;
+        select.value = eff.params.type || 'angle';
+        select.addEventListener('change', e => { eff.params.type = e.target.value; });
+        row.appendChild(label); row.appendChild(select);
+        return row;
+      }
+
       rotContainer.appendChild(addRotationTypeRow());
       rotContainer.appendChild(addSliderWithLabel('Amp:', 'amp', -4, 4, 0.01));
       rotContainer.appendChild(addSliderWithLabel('Zoom:', 'zoom', 0.1, 3.0, 0.01));
@@ -2148,6 +2613,91 @@ function buildEffectsUI() {
       rotContainer.appendChild(addSliderWithLabel('Iterations:', 'iterations', 1, 10, 1));
 
       controls.appendChild(rotContainer);
+
+    } else if (id === 'earthquake') {
+      const eqContainer = document.createElement('div');
+      eqContainer.style.display = 'flex'; eqContainer.style.flexDirection = 'column';
+      eqContainer.style.gap = '6px'; eqContainer.style.minWidth = '300px';
+
+      function eqSlider(labelTxt, key, min, max, step) {
+        const row = document.createElement('div');
+        row.style.display = 'flex'; row.style.alignItems = 'center'; row.style.gap = '8px';
+        const label = document.createElement('label');
+        label.textContent = labelTxt;
+        label.style.fontSize = '12px'; label.style.color = '#ccc'; label.style.minWidth = '80px';
+        const slider = document.createElement('input');
+        slider.type = 'range'; slider.className = 'effect-slider';
+        slider.min = min; slider.max = max; slider.step = step;
+        slider.value = eff.params[key];
+        const valDisplay = document.createElement('span');
+        valDisplay.className = 'slider-value';
+        valDisplay.style.fontSize = '11px'; valDisplay.style.color = '#aaa'; valDisplay.style.minWidth = '32px';
+        valDisplay.style.textAlign = 'right';
+        const updateLabel = () => {
+          eff.params[key] = parseFloat(slider.value);
+          valDisplay.textContent = parseFloat(slider.value).toFixed(step < 1 ? (step < 0.01 ? 3 : 2) : 0);
+        };
+        slider.addEventListener('input', updateLabel);
+        updateLabel();
+        row.appendChild(label); row.appendChild(slider); row.appendChild(valDisplay);
+        return row;
+      }
+
+      eqContainer.appendChild(eqSlider('X Shake:',   'xAmp',   0, 0.2,  0.001));
+      eqContainer.appendChild(eqSlider('Y Shake:',   'yAmp',   0, 0.2,  0.001));
+      eqContainer.appendChild(eqSlider('Rotation°:', 'rotAmp', 0, 15.0, 0.1));
+      eqContainer.appendChild(eqSlider('Zoom:',      'zoom',   0.1, 3.0, 0.01));
+      eqContainer.appendChild(eqSlider('X Speed:',   'xSpeed',   0.1, 30.0, 0.05));
+      eqContainer.appendChild(eqSlider('Y Speed:',   'ySpeed',   0.1, 30.0, 0.05));
+      eqContainer.appendChild(eqSlider('Rot Speed:', 'rotSpeed', 0.1, 30.0, 0.05));
+      eqContainer.appendChild(eqSlider('Octaves:',   'octaves',1, 8, 1));
+
+      controls.appendChild(eqContainer);
+
+    } else if (id === 'activeCam') {
+      const acContainer = document.createElement('div');
+      acContainer.style.display = 'flex'; acContainer.style.flexDirection = 'column';
+      acContainer.style.gap = '6px'; acContainer.style.minWidth = '300px';
+
+      function acSlider(labelTxt, key, min, max, step) {
+        const row = document.createElement('div');
+        row.style.display = 'flex'; row.style.alignItems = 'center'; row.style.gap = '8px';
+        const label = document.createElement('label');
+        label.textContent = labelTxt;
+        label.style.fontSize = '12px'; label.style.color = '#ccc'; label.style.minWidth = '80px';
+        const slider = document.createElement('input');
+        slider.type = 'range'; slider.className = 'effect-slider';
+        slider.min = min; slider.max = max; slider.step = step;
+        slider.value = eff.params[key];
+        const valDisplay = document.createElement('span');
+        valDisplay.className = 'slider-value';
+        valDisplay.style.fontSize = '11px'; valDisplay.style.color = '#aaa'; valDisplay.style.minWidth = '32px';
+        valDisplay.style.textAlign = 'right';
+        const updateLabel = () => {
+          const v = (step >= 1) ? Math.round(parseFloat(slider.value)) : parseFloat(slider.value);
+          eff.params[key] = v;
+          valDisplay.textContent = (step >= 1) ? String(v) : v.toFixed(step < 1 ? (step < 0.01 ? 3 : 2) : 0);
+        };
+        slider.addEventListener('input', updateLabel);
+        updateLabel();
+        row.appendChild(label); row.appendChild(slider); row.appendChild(valDisplay);
+        return row;
+      }
+
+      acContainer.appendChild(acSlider('X Shake:',   'xAmp',      0,   0.2,  0.001));
+      acContainer.appendChild(acSlider('Y Shake:',   'yAmp',      0,   0.2,  0.001));
+      acContainer.appendChild(acSlider('Rotation°:', 'rotAmp',    0,  15.0,  0.1));
+      acContainer.appendChild(acSlider('Zoom:',      'zoom',    0.1,  3.0,  0.01));
+      acContainer.appendChild(acSlider('X Speed:',   'xSpeed',  0.1, 30.0,  0.05));
+      acContainer.appendChild(acSlider('Y Speed:',   'ySpeed',  0.1, 30.0,  0.05));
+      acContainer.appendChild(acSlider('Rot Speed:', 'rotSpeed',0.1, 30.0,  0.05));
+      acContainer.appendChild(acSlider('Tension:',   'tension',  -4.0,  4.0,  0.01));
+      acContainer.appendChild(acSlider('Window:',    'window',    0.0,  1.0,  0.01));
+      acContainer.appendChild(acSlider('Seed:',      'seed',     1, 1000,   1));
+      acContainer.appendChild(acSlider('MotionBlur:','motionBlur',0,  1.0,  0.01));
+      acContainer.appendChild(acSlider('Iterations:','iterations',1, 10,    1));
+
+      controls.appendChild(acContainer);
 
     } else {
       const s = document.createElement('input');
@@ -2310,22 +2860,6 @@ if (!gl) {
 }
 
 /* ========== Video load / playback / UI ========== */
-fileInput.addEventListener('change', e => {
-  const file = e.target.files[0];
-  if (!file) return;
-  loadedFile = file;
-  video.src = URL.createObjectURL(file);
-  fileLabel.textContent = file.name;
-  video.onloadedmetadata = () => {
-    canvas.width  = Math.min(1280, video.videoWidth  || 800);
-    canvas.height = Math.min(720,  video.videoHeight || 450);
-    initGLAndProgram();
-    renderFrameToCanvasWebGL();
-    timeDisplay.textContent = `0:00 / ${formatTime(video.duration)}`;
-  };
-  video.addEventListener('timeupdate', updateProgressUI);
-  video.addEventListener('ended', () => { isPlaying = false; playPauseBtn.textContent = '▶'; });
-});
 
 async function parseCubeFile(file) {
   const text = await file.text();
@@ -2560,6 +3094,100 @@ function updateVideoTexture(gl, video, texture) {
   }
 }
 
+/* ========= SLIDER VALUE CLICK-TO-EDIT POPUP ========= */
+(function() {
+  // Create popup DOM
+  const popup = document.createElement('div');
+  popup.id = 'sliderValuePopup';
+  popup.innerHTML = `
+    <label id="sliderValuePopupLabel">Enter value</label>
+    <input type="number" id="sliderValueInput" />
+    <div id="sliderValuePopupBtns">
+      <button class="btn ghost small" id="sliderValueCancel">Cancel</button>
+      <button class="btn small" id="sliderValueApply">Apply</button>
+    </div>
+  `;
+  document.body.appendChild(popup);
+
+  let currentSpan = null;
+  let currentSlider = null;
+
+  function showPopup(span, slider, event) {
+    currentSpan = span;
+    currentSlider = slider;
+
+    const input = document.getElementById('sliderValueInput');
+    const label = document.getElementById('sliderValuePopupLabel');
+
+    input.min = slider.min;
+    input.max = slider.max;
+    input.step = slider.step;
+    input.value = slider.value;
+
+    label.textContent = `Value (${slider.min} – ${slider.max})`;
+
+    // Position popup near the click
+    const rect = span.getBoundingClientRect();
+    popup.classList.add('visible');
+    const pw = popup.offsetWidth || 180;
+    const ph = popup.offsetHeight || 100;
+    let left = rect.left;
+    let top = rect.bottom + 6;
+    if (left + pw > window.innerWidth - 8) left = window.innerWidth - pw - 8;
+    if (top + ph > window.innerHeight - 8) top = rect.top - ph - 6;
+    popup.style.left = left + 'px';
+    popup.style.top = top + 'px';
+
+    setTimeout(() => input.select(), 30);
+  }
+
+  function applyValue() {
+    if (!currentSlider || !currentSpan) return;
+    let v = parseFloat(document.getElementById('sliderValueInput').value);
+    const mn = parseFloat(currentSlider.min);
+    const mx = parseFloat(currentSlider.max);
+    if (isNaN(v)) v = parseFloat(currentSlider.value);
+    v = Math.min(mx, Math.max(mn, v));
+    currentSlider.value = v;
+    currentSlider.dispatchEvent(new Event('input', { bubbles: true }));
+    popup.classList.remove('visible');
+    currentSpan = null; currentSlider = null;
+  }
+
+  document.getElementById('sliderValueApply').addEventListener('click', applyValue);
+  document.getElementById('sliderValueCancel').addEventListener('click', () => {
+    popup.classList.remove('visible');
+    currentSpan = null; currentSlider = null;
+  });
+  document.getElementById('sliderValueInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') applyValue();
+    if (e.key === 'Escape') { popup.classList.remove('visible'); currentSpan = null; currentSlider = null; }
+  });
+
+  // Close on outside click
+  document.addEventListener('mousedown', (e) => {
+    if (popup.classList.contains('visible') && !popup.contains(e.target) && e.target !== currentSpan) {
+      popup.classList.remove('visible');
+      currentSpan = null; currentSlider = null;
+    }
+  });
+
+  // Attach click handlers via event delegation on effectsList
+  document.addEventListener('click', (e) => {
+    const span = e.target.closest('.slider-value');
+    if (!span) return;
+    // Find the associated slider: previous sibling or sibling in parent
+    let slider = span.previousElementSibling;
+    if (!slider || slider.type !== 'range') {
+      // Try parent's range input
+      slider = span.closest('div') && span.closest('div').querySelector('input[type="range"]');
+    }
+    if (!slider) return;
+    e.stopPropagation();
+    showPopup(span, slider, e);
+  });
+})();
+
 video.setAttribute('playsinline', '');
 video.setAttribute('webkit-playsinline', '');
 video.setAttribute('muted', '');
@@ -2576,13 +3204,63 @@ startButton.addEventListener('click', () => {
   video.play().then(() => { startButton.style.display = 'none'; }).catch(err => console.warn('Manual play failed:', err));
 });
 
+function loadVideoFile(file) {
+  if (!file || !file.type.startsWith('video/')) return;
+  loadedFile = file;
+  fileLabel.textContent = file.name;
+  video.src = URL.createObjectURL(file);
+  video.onloadedmetadata = () => {
+    // Preserve source aspect ratio while fitting within the UI max.
+    const srcW = video.videoWidth  || 800;
+    const srcH = video.videoHeight || 450;
+    const maxW = 1280, maxH = 720;
+    const scale = Math.min(1, maxW / srcW, maxH / srcH);
+    canvas.width  = Math.max(2, Math.round(srcW * scale));
+    canvas.height = Math.max(2, Math.round(srcH * scale));
+    initGLAndProgram();
+    renderFrameToCanvasWebGL();
+    timeDisplay.textContent = `0:00 / ${formatTime(video.duration)}`;
+  };
+  video.addEventListener('timeupdate', updateProgressUI);
+  video.addEventListener('ended', () => { isPlaying = false; playPauseBtn.textContent = '▶'; });
+  video.play().catch(err => { console.warn('Autoplay blocked:', err); startButton.style.display = 'block'; });
+}
+
 if (typeof fileInput !== 'undefined') {
   fileInput.addEventListener('change', e => {
     const file = e.target.files[0];
-    if (file) {
-      video.src = URL.createObjectURL(file);
-      video.play().catch(err => { console.warn('Autoplay blocked:', err); startButton.style.display = 'block'; });
-    }
+    if (file) loadVideoFile(file);
+  });
+}
+
+const dropZone = document.getElementById('dropZone');
+if (dropZone) {
+  dropZone.addEventListener('dragover', e => {
+    e.preventDefault();
+    dropZone.style.borderColor = '#4169E1';
+    dropZone.style.background = 'rgba(65,105,225,0.12)';
+  });
+  dropZone.addEventListener('dragleave', e => {
+    dropZone.style.borderColor = '';
+    dropZone.style.background = '';
+  });
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.style.borderColor = '';
+    dropZone.style.background = '';
+    const file = e.dataTransfer.files[0];
+    if (file) loadVideoFile(file);
+  });
+}
+
+// Also allow dropping anywhere on the canvas
+const canvasEl = document.getElementById('canvas');
+if (canvasEl) {
+  canvasEl.addEventListener('dragover', e => { e.preventDefault(); });
+  canvasEl.addEventListener('drop', e => {
+    e.preventDefault();
+    const file = e.dataTransfer.files[0];
+    if (file) loadVideoFile(file);
   });
 }
 </script>
